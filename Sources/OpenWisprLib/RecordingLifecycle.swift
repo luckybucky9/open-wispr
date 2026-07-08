@@ -54,6 +54,14 @@ struct RecordingLifecycle {
         return isReady ? .prepareRecorder : .none
     }
 
+    /// The user asked to rebuild the audio engine from the menu bar (manual
+    /// recovery when the engine is stranded). Same decision as an audio
+    /// configuration change: cancel any in-flight recording — its tap is
+    /// likely dead — otherwise just rebuild the recorder.
+    mutating func manualEngineRestart(isReady: Bool) -> Action {
+        audioConfigurationChanged(isReady: isReady)
+    }
+
     mutating func recordingStartFailed() {
         isRecording = false
     }

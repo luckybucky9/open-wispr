@@ -62,6 +62,21 @@ final class RecordingLifecycleTests: XCTestCase {
         XCTAssertFalse(lifecycle.isRecording)
     }
 
+    func testManualEngineRestartWhileRecordingCancels() {
+        var lifecycle = RecordingLifecycle()
+
+        XCTAssertEqual(lifecycle.keyDown(toggleMode: false), .startRecording)
+        XCTAssertEqual(lifecycle.manualEngineRestart(isReady: true), .cancelRecording)
+        XCTAssertFalse(lifecycle.isRecording)
+    }
+
+    func testManualEngineRestartWhileIdlePreparesRecorder() {
+        var lifecycle = RecordingLifecycle()
+
+        XCTAssertEqual(lifecycle.manualEngineRestart(isReady: true), .prepareRecorder)
+        XCTAssertFalse(lifecycle.isRecording)
+    }
+
     func testStartFailureReturnsLifecycleToIdle() {
         var lifecycle = RecordingLifecycle()
 

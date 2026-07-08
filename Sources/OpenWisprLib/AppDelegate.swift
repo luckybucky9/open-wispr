@@ -59,6 +59,9 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
             self.statusBar.onConfigChange = { [weak self] newConfig in
                 self?.applyConfigChange(newConfig)
             }
+            self.statusBar.restartAudioHandler = { [weak self] in
+                self?.restartAudioEngine()
+            }
             self.statusBar.buildMenu()
         }
 
@@ -169,6 +172,29 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     public func reloadConfig() {
         let newConfig = Config.load()
         applyConfigChange(newConfig)
+    }
+
+    /// User-invoked from the menu bar: rebuild the audio engine bound to the
+    /// currently configured input device. The auto-recovery observers catch
+    /// most device changes, but this is the manual escape hatch if the engine
+    /// is ever left stranded — the hotkey fires and a WAV is written, but it
+    /// captures no audio — without changing the configured device or restarting
+    /// the app.
+    public func restartAudioEngine() {
+        guard isReady else { return }
+        switch recordingLifecycle.manualEngineRestart(isReady: isReady) {
+        case .cancelRecording:
+            print("Restart audio engine requested mid-recording, cancelling recording")
+            recorder.teardown()
+            RecordingCancellation.discardTrackedPartialRecording(&currentRecordingURL)
+            resetRecordingStatusToIdleIfNeeded()
+            prepareRecorderForCurrentDevices()
+        case .prepareRecorder:
+            print("Manually restarting audio engine")
+            prepareRecorderForCurrentDevices()
+        case .none, .startRecording, .stopRecording:
+            break
+        }
     }
 
     /// Configs written by older versions store only the numeric AudioDeviceID,

@@ -19,6 +19,7 @@ class StatusBarController: NSObject {
 
     var reprocessHandler: ((URL) -> Void)?
     var onConfigChange: ((Config) -> Void)?
+    var restartAudioHandler: (() -> Void)?
 
     enum State {
         case idle
@@ -325,6 +326,10 @@ class StatusBarController: NSObject {
         reloadItem.target = self
         menu.addItem(reloadItem)
 
+        let restartAudioItem = NSMenuItem(title: "Restart Audio Engine", action: #selector(restartAudioEngine), keyEquivalent: "")
+        restartAudioItem.target = self
+        menu.addItem(restartAudioItem)
+
         let openItem = NSMenuItem(title: "Open Configuration", action: #selector(openConfiguration), keyEquivalent: "o")
         openItem.target = self
         menu.addItem(openItem)
@@ -338,6 +343,10 @@ class StatusBarController: NSObject {
     @objc private func reloadConfiguration() {
         guard let delegate = NSApplication.shared.delegate as? AppDelegate else { return }
         delegate.reloadConfig()
+    }
+
+    @objc private func restartAudioEngine() {
+        restartAudioHandler?()
     }
 
     @objc private func openConfiguration() {
