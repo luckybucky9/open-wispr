@@ -81,6 +81,43 @@ class AudioDeviceManager {
         return listInputDevices().first(where: { $0.uid == uid })?.id
     }
 
+    private static var deviceChangeHandler: (() -> Void)?
+    private static var deviceChangeDebounce: DispatchWorkItem?
+    private static var deviceChangeListener: AudioObjectPropertyListenerBlock?
+
+    /// Invoke `onChange` (on the main queue) whenever the set of audio
+    /// devices or the default input device changes. Bursts of change events
+    /// (a Bluetooth headset connecting fires several) are coalesced.
+    static func startDeviceChangeMonitoring(onChange: @escaping () -> Void) {
+        guard deviceChangeListener == nil else {
+            deviceChangeHandler = onChange
+            return
+        }
+        deviceChangeHandler = onChange
+
+        let listener: AudioObjectPropertyListenerBlock = { _, _ in
+            deviceChangeDebounce?.cancel()
+            let work = DispatchWorkItem { deviceChangeHandler?() }
+            deviceChangeDebounce = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+        }
+        deviceChangeListener = listener
+
+        for selector in [kAudioHardwarePropertyDevices, kAudioHardwarePropertyDefaultInputDevice] {
+            var address = AudioObjectPropertyAddress(
+                mSelector: selector,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            AudioObjectAddPropertyListenerBlock(
+                AudioObjectID(kAudioObjectSystemObject),
+                &address,
+                DispatchQueue.main,
+                listener
+            )
+        }
+    }
+
     static func getDeviceUID(deviceID: AudioDeviceID) -> String? {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyDeviceUID,

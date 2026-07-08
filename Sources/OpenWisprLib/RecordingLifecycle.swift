@@ -42,6 +42,18 @@ struct RecordingLifecycle {
         isReady ? .prepareRecorder : .none
     }
 
+    /// The audio engine's I/O configuration was invalidated (an audio device
+    /// was added or removed, or the default device changed). Any in-flight
+    /// recording is already broken — its tap stops receiving buffers — so
+    /// cancel it; otherwise rebuild the recorder so the next recording works.
+    mutating func audioConfigurationChanged(isReady: Bool) -> Action {
+        if isRecording {
+            isRecording = false
+            return .cancelRecording
+        }
+        return isReady ? .prepareRecorder : .none
+    }
+
     mutating func recordingStartFailed() {
         isRecording = false
     }
