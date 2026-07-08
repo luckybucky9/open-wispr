@@ -123,13 +123,18 @@ final class Pill {
     }
 
     @objc private func reposition() {
-        guard let screen = NSScreen.main else { return }
-        let vf = screen.visibleFrame
+        // Follow the screen the mouse is on — NSScreen.main resolves to the primary
+        // display for a background app, which is the wrong monitor half the time.
+        let mouse = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) })
+            ?? NSScreen.main ?? NSScreen.screens.first
+        guard let vf = screen?.visibleFrame else { return }
         window.setFrameOrigin(NSPoint(x: vf.midX - window.frame.width/2, y: vf.minY + 90))
     }
 
     func showListening() {
         hideWork?.cancel(); hideWork = nil
+        reposition()
         wave.reset()
         window.orderFrontRegardless()
         NSAnimationContext.runAnimationGroup { $0.duration = 0.12; window.animator().alphaValue = 1 }
