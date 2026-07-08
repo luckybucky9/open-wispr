@@ -8,6 +8,14 @@ class AudioRecorder {
     private var currentOutputURL: URL?
     var preferredDeviceID: AudioDeviceID?
 
+    /// Called (on the main queue) when the system invalidates the engine's
+    /// I/O configuration — an audio device was added or removed, or the
+    /// default device changed. The engine stops delivering buffers to its tap
+    /// at that point, so the owner should cancel any in-flight recording and
+    /// reload().
+    var onConfigurationChange: (() -> Void)?
+    private var configChangeObserver: NSObjectProtocol?
+
     func prewarm() {
         guard audioEngine == nil else { return }
 
@@ -21,10 +29,22 @@ class AudioRecorder {
         _ = engine.inputNode
         engine.prepare()
         audioEngine = engine
+
+        configChangeObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: .main
+        ) { [weak self] _ in
+            self?.onConfigurationChange?()
+        }
     }
 
     /// Stop and release the engine. Call before changing input device or on shutdown.
     func teardown() {
+        if let observer = configChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            configChangeObserver = nil
+        }
         if isRecording {
             audioEngine?.inputNode.removeTap(onBus: 0)
             isRecording = false
