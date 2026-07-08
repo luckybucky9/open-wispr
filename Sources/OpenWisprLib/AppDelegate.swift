@@ -9,6 +9,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     var config: Config!
     var recordingLifecycle = RecordingLifecycle()
     var currentRecordingURL: URL?
+    private var reloadRecorderAfterRecording = false
     private var sleepWakeObservers: [NSObjectProtocol] = []
     var isReady = false
     public var lastTranscription: String?
@@ -16,6 +17,9 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     public func applicationDidFinishLaunching(_ notification: Notification) {
         statusBar = StatusBarController()
         recorder = AudioRecorder()
+        recorder.onConfigurationChange = { [weak self] in
+            self?.handleAudioConfigurationChange()
+        }
         registerSleepWakeObservers()
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -150,6 +154,10 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         isReady = true
         statusBar.state = .idle
         statusBar.buildMenu()
+
+        AudioDeviceManager.startDeviceChangeMonitoring { [weak self] in
+            self?.handleAudioDevicesChanged()
+        }
 
         let hotkeyDesc = config.hotkeySummary()
         print("open-wispr v\(OpenWispr.version)")
@@ -294,11 +302,13 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         guard let audioURL = recorder.stopRecording() else {
             RecordingCancellation.discardTrackedPartialRecording(&currentRecordingURL)
             statusBar.state = .idle
+            reloadRecorderAfterRecordingIfNeeded()
             return
         }
 
         currentRecordingURL = nil
         statusBar.state = .transcribing
+        reloadRecorderAfterRecordingIfNeeded()
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
@@ -352,6 +362,51 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     func handleSystemDidWake() {
         guard recordingLifecycle.systemDidWake(isReady: isReady) == .prepareRecorder else { return }
 
+        prepareRecorderForCurrentDevices()
+    }
+
+    func handleAudioConfigurationChange() {
+        switch recordingLifecycle.audioConfigurationChanged(isReady: isReady) {
+        case .cancelRecording:
+            print("Audio device configuration changed mid-recording, cancelling and reloading recorder")
+            recorder.teardown()
+            RecordingCancellation.discardTrackedPartialRecording(&currentRecordingURL)
+            resetRecordingStatusToIdleIfNeeded()
+            prepareRecorderForCurrentDevices()
+        case .prepareRecorder:
+            print("Audio device configuration changed, reloading recorder")
+            prepareRecorderForCurrentDevices()
+        case .none, .startRecording, .stopRecording:
+            break
+        }
+    }
+
+    /// A device was added or removed, or the default input changed. Don't
+    /// kill an in-flight recording for this — the engine usually survives a
+    /// topology change — but rebuild at the next opportunity so the recorder
+    /// is bound to devices that still exist. If the engine actually died
+    /// mid-recording, the AVAudioEngineConfigurationChange path cancels the
+    /// recording instead.
+    func handleAudioDevicesChanged() {
+        guard isReady else { return }
+        if recordingLifecycle.isRecording {
+            reloadRecorderAfterRecording = true
+            return
+        }
+        print("Audio devices changed, reloading recorder")
+        prepareRecorderForCurrentDevices()
+    }
+
+    private func reloadRecorderAfterRecordingIfNeeded() {
+        guard reloadRecorderAfterRecording else { return }
+        print("Audio devices changed during recording, reloading recorder")
+        prepareRecorderForCurrentDevices()
+    }
+
+    /// Re-resolve the configured input device against the devices present
+    /// right now and rebuild the engine bound to it.
+    private func prepareRecorderForCurrentDevices() {
+        reloadRecorderAfterRecording = false
         recorder.preferredDeviceID = AudioDeviceManager.resolveConfiguredDeviceID(
             uid: config.audioInputDeviceUID,
             legacyID: config.audioInputDeviceID

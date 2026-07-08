@@ -44,6 +44,24 @@ final class RecordingLifecycleTests: XCTestCase {
         XCTAssertEqual(lifecycle.systemDidWake(isReady: true), .prepareRecorder)
     }
 
+    func testAudioConfigurationChangeWhileRecordingCancelsInsteadOfStopping() {
+        var lifecycle = RecordingLifecycle()
+
+        XCTAssertEqual(lifecycle.keyDown(toggleMode: false), .startRecording)
+        XCTAssertEqual(lifecycle.audioConfigurationChanged(isReady: true), .cancelRecording)
+        XCTAssertFalse(lifecycle.isRecording)
+        XCTAssertEqual(lifecycle.keyDown(toggleMode: false), .startRecording)
+        XCTAssertEqual(lifecycle.keyUp(toggleMode: false), .stopRecording)
+    }
+
+    func testAudioConfigurationChangeWhileIdlePreparesOnlyWhenReady() {
+        var lifecycle = RecordingLifecycle()
+
+        XCTAssertEqual(lifecycle.audioConfigurationChanged(isReady: false), .none)
+        XCTAssertEqual(lifecycle.audioConfigurationChanged(isReady: true), .prepareRecorder)
+        XCTAssertFalse(lifecycle.isRecording)
+    }
+
     func testStartFailureReturnsLifecycleToIdle() {
         var lifecycle = RecordingLifecycle()
 
