@@ -55,6 +55,9 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
             self.statusBar.onConfigChange = { [weak self] newConfig in
                 self?.applyConfigChange(newConfig)
             }
+            self.statusBar.restartAudioHandler = { [weak self] in
+                self?.restartAudioEngine()
+            }
             self.statusBar.buildMenu()
         }
 
@@ -161,6 +164,28 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     public func reloadConfig() {
         let newConfig = Config.load()
         applyConfigChange(newConfig)
+    }
+
+    /// User-invoked from the menu bar: rebuild the audio engine bound to the
+    /// currently configured input device. The engine can be left stranded when
+    /// audio devices change out from under it (Bluetooth, iPhone Continuity, or
+    /// virtual conferencing devices) — the hotkey still fires and a WAV is
+    /// written, but it captures no audio. This is the manual recovery for that
+    /// state, without having to change the configured device or restart the app.
+    public func restartAudioEngine() {
+        guard isReady else { return }
+        if currentRecordingURL != nil {
+            print("Restart audio engine requested mid-recording, cancelling recording")
+            recorder.teardown()
+            RecordingCancellation.discardTrackedPartialRecording(&currentRecordingURL)
+            resetRecordingStatusToIdleIfNeeded()
+        }
+        print("Restarting audio engine")
+        recorder.preferredDeviceID = AudioDeviceManager.resolveConfiguredDeviceID(
+            uid: config.audioInputDeviceUID,
+            legacyID: config.audioInputDeviceID
+        )
+        recorder.reload()
     }
 
     /// Configs written by older versions store only the numeric AudioDeviceID,
