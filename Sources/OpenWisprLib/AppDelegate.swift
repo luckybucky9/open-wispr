@@ -438,6 +438,11 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
             legacyID: config.audioInputDeviceID
         )
         recorder.reload()
+        // Rebuild the menu so the "Audio Input:" line reflects reality: when the
+        // pinned device is gone resolveConfiguredDeviceID returns nil, and the menu
+        // must fall back to "System Default" and move the checkmark instead of
+        // naming a mic that's no longer physically connected.
+        statusBar.buildMenu()
     }
 
     private func registerSleepWakeObservers() {
